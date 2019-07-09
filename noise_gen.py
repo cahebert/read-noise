@@ -14,6 +14,9 @@ class Noise:
 		self.rafts = ['R{}{}'.format(i,j) for i in range(5) for j in range(5) if i in range(1,4) or j in range(1,4)]
 		self.slots = ['S{}{}'.format(i//3, i%3) for i in range(9)]
 		self.CCD_list = ['{}_{}'.format(raft,slot) for raft in self.rafts for slot in self.slots]
+		self.ffp_noise = {}			# Stores the values of the noise for this noise object
+		for CCD in self.CCD_list:
+			self.ffp_noise[CCD] = {} 
 		#self.e2v_rafts = []
 		#self.sta_rafts = []
 
@@ -27,42 +30,62 @@ class Noise:
 		'''
 		return (2000,509)
 
-	def getIndNoise(self, sigma):
-		'''Returns random noise with std sigma and with each pixel independent'''
-		ffp_noise= {}
+	def setZero(self):
+		'''Returns zero noise'''
 		for CCD in self.CCD_list:
-			ffp_noise[CCD] = {}
 			for ampno in range(1,17):
-				ffp_noise[CCD][ampno] = np.random.normal(0,sigma,size=self.__getImagingShape__(CCD))
-		return ffp_noise
+				self.ffp_noise[CCD][ampno] = np.zeros(self.__getImagingShape__(CCD))
 
-	def getCCDCorrNoise(self, cov):
-		'''Takes as input a 16x16 covariance matrix for a single CCD and returns noise for the 
+	def setIndNoise(self, sigma):
+		'''Sets the ffp_noise to random noise with std sigma and with each pixel independent'''
+		for CCD in self.CCD_list:
+			for ampno in range(1,17):
+				self.ffp_noise[CCD][ampno] = np.random.normal(0,sigma,size=self.__getImagingShape__(CCD))
+
+	def setCCDCorrNoise(self, cov):
+		'''Takes as input a 16x16 covariance matrix for a single CCD and sets noise for the 
 		FP where CCDs are assumed to be independent of each other and normally distributed 
 		within the CCD'''
-		ffp_noise = {}
 		for CCD in self.CCD_list:
-			ffp_noise[CCD] = {}
-			size = self.__getImagingShape__(CCD)
-			noise = np.random.multivariate_normal(np.zeros(16), cov,size=size)
+			noise = np.random.multivariate_normal(np.zeros(16), cov,size=self.__getImagingShape__(CCD))
 			for ampno in range(1,17):
-				ffp_noise[CCD][ampno] = noise[:,:,ampno-1]
-		return ffp_noise
+				self.ffp_noise[CCD][ampno] = noise[:,:,ampno-1]
 
-	def getMultiCCDCorrNoise(self, covStack):
+	def setMultiCCDCorrNoise(self, covStack):
 		'''Takes as input a 9x16x16 array of covariance matrices for the nine CCDs on a raft
-		and returns noise for the FP where the CCDs are assumed to be independent of each other 
+		and sets the noise for the FP where the CCDs are assumed to be independent of each other 
 		and normally distributed within the CCD. Randomly shuffles order of covariance matrices
 		on the raft'''
-		ffp_noise = {}
 		for raft in self.rafts:
 			np.random.shuffle(covStack)
 			for islot, slot in enumerate(self.slots):
 				ccdid = '{}_{}'.format(raft,slot)
-				ffp_noise[ccdid] = {}
 				size = self.__getImagingShape__(ccdid)
 				noise = np.random.multivariate_normal(np.zeros(16),covStack[islot,:,:], size=size)
 				for ampno in range(1,17):
-					ffp_noise[ccdid][ampno] = noise[:,:,ampno-1]
-		return ffp_noise
+					self.ffp_noise[ccdid][ampno] = noise[:,:,ampno-1]
 
+	def setRaftCorrNoise(self, cov):
+		'''Takes as input a 144x144 covariance matrix for an entire raft, where the index is equal 
+		to slot# * 16 + amp# - 1 and sets the noise for the FP where the rafts are assumed to be 
+		independent of each other'''
+		for raft in self.rafts:
+			size = self.__getImagingShape__('{}_S00'.format(raft))
+			noise = np.random.multivariate_normal(np.zeros(16),covStack[islot,:,:], size=size)
+			for islot, slot in enumerate(self.slots):
+				ccdid = '{}_{}'.format(raft,slot)
+				for ampno in range(1,17):
+					noiseIndex = islot * 16 + ampno - 1
+					self.ffp_noise[ccdid][ampno] = noise[:,:,noiseIndex]
+
+	def get_footprint(self, edgelen, ccdid, ampno, x, y):
+		'''Given an edgelen, ccdid, ampno, and x and y coord for the bottom-left-most coord in a 
+		footprint, returns an array of the noise values for that region. Assumes edgelen < 509 '''
+		
+		ccd_size = self.__getImagingShape__(ccdid)
+		if edgelen + x < ccd_size[0] and edgelen + y < ccd_size[1]:
+			return self.ffp_noise[ccdid][ampno][x:x+edgelen,y:y+edgelen]
+
+	def get_ffp_noise(self):
+		'''Returns the noise for the entire focal plane'''
+		return self.ffp_noise

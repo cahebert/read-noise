@@ -54,6 +54,14 @@ class Noise:
 			out[bottomLeftX:bottomLeftX+xShape, bottomLeftY:bottomLeftY+yShape] = noise[ampno]
 		return out
 
+	def setZeroNoise(self):
+		ffp_noise = {}
+		for CCD in self.CCD_list:
+			ffp_noise[CCD] = {}
+			for ampno in range(1,17):
+				ffp_noise[CCD][ampno] = np.zeros(self.getImagingShape(CCD))
+			self.CCD_noise = self.getCCDfromAmps(CCD, ffp_noise[CCD])
+
 	def setIndNoise(self, sigma):
 		'''Sets the ffp_noise to random noise with std sigma and with each pixel independent'''
 		ffp_noise = {}
@@ -197,7 +205,7 @@ class Noise:
 				footprint = self.CCD_noise[ccdid][leftBound:rightBound, bottomBound:topBound]
 	"""
 
-	def get_footprint_from_vertices(self, ccdid, cx, cy, edgelen):
+	def getFootprint(self, ccdid, cx, cy, edgelen):
 		'''Given a value for the center of an object, returns a square array with
 		edgelength edgelen containing the noise centered at pixel (cx, cy) on the ccdid '''
 		halfEdge = edgelen / 2
@@ -210,4 +218,4 @@ class Noise:
 		if bottomBound < 0 or topBound > size[0] or leftBound < 0 or rightBound > size[1]:
 			return None
 
-		return self.CCD_noise[ccdid][bottomBound:topBound,leftBound:rightBound]
+		return self.CCD_noise[ccdid][bottomBound:topBound,leftBound:rightBound]	

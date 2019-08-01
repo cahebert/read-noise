@@ -70,7 +70,7 @@ def getWeightsAndSize(e1, e2, hlr, psfSig=0.7):
 
 def getNoise(ra, dec, edgelen):
 	ccdid, cx, cy = skyToCamPixel(ra, dec)
-	return noise.getFootprint(ccdid, cx, cy, edgelen)
+	return noise.getFootprint(ccdid, cx, cy, edgelen) * 0.0009510798216162556
 
 def getDeltaFlux(weightMat, noiseMat):
 	return np.sum(np.multiply(weightMat, noiseMat)) / np.sum(np.multiply(weightMat, weightMat))

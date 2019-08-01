@@ -13,6 +13,14 @@ pointingDec = fitsio.read(fname, columns='TDEC', rows=0, ext=1)[0]
 boresight = geom.SpherePoint(pointingRA, pointingDec, geom.degrees)
 wcsList = {detector : getWcsFromDetector(detector, boresight) for detector in camera}
 
+file = os.path.join('/nfs/slac/des/fs1/g/sims/jderose/BCC/Chinchilla/Herd/Chinchilla-4/v1.9.2/addgalspostprocess/truth/truth/','Chinchilla-4_lensed.4.fits')
+fits = fitsio.read(file, columns=['LMAG', 'SIZE', 'EPSILON'], ext = 1)
+
+
+RBAND = fits['LMAG'][:,1]
+E1 = fits['EPSILON'][:,0]
+E2 = fits['EPSILON'][:,1]
+
 def skyToCamPixel(ra, dec):
     loc = geom.SpherePoint(ra, dec, geom.degrees)
     for det in wcsList:
@@ -76,9 +84,14 @@ def getDeltaFlux(weightMat, noiseMat):
 	return np.sum(np.multiply(weightMat, noiseMat)) / np.sum(np.multiply(weightMat, weightMat))
 
 nElems = len(fitsio.read(file, columns=[], ext=1))
-
+galaxyFlux = np.zeros(nElems)
+newRBAND = np.zeros(nElems)
+for j in range(nElems):
+    galaxyFlux[j] = 10**((fits['HLR'][i]-22.5)/(-2.5))
 for i in range(nElems):
 	weights, edgelen = getWeightsAndSize(E1[i], E2[i], fits['HLR'][i])
 	noise = getNoise(fits['RA'][i], fits['DEC'][i], edgelen)
-	getDeltaFlux(weights, noise)
+	totalFlux = getDeltaFlux(weights, noise) + galaxyFlux[j]
+    mag = 22.5 - 2.5*np.log10(totalFlux)
+    newRBAND[j] = np.zeros(mag)
 

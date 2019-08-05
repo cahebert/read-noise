@@ -1,7 +1,7 @@
 import numpy as np
 from lsst.obs.lsst.cameraTransforms import LsstCameraTransforms
 
-class BoundaryError(Error):
+class BoundaryError(Exception):
 	pass
 
 class Noise:
@@ -22,7 +22,7 @@ class Noise:
 		
 		self.e2v_detectors = {det.getName() for det in camera if det.getSerial().find('e2v') != -1}
 		self.sta_detectors = {det.getName() for det in camera if det.getSerial().find('3800C') != -1}
-
+		
 		self.CCD_noise = {}
 		
 	def getImagingShape(self, ccdid):
@@ -58,22 +58,13 @@ class Noise:
 		return out
 
 	def setZeroNoise(self):
-		ffp_noise = {}
 		for CCD in self.CCD_list:
-			ffp_noise[CCD] = {}
-			for ampno in range(1,17):
-				ffp_noise[CCD][ampno] = np.zeros(self.getImagingShape(CCD))
-			self.CCD_noise = self.getCCDfromAmps(CCD, ffp_noise[CCD])
+			self.CCD_noise[CCD] = np.zeros(self.getCCDSize(CCD))
 
 	def setIndNoise(self, sigma):
 		'''Sets the ffp_noise to random noise with std sigma and with each pixel independent'''
-		ffp_noise = {}
 		for CCD in self.CCD_list:
-			ffp_noise[CCD] = {}
-			for ampno in range(1,17):
-				ffp_noise[CCD][ampno] = np.random.normal(0,sigma,size=self.getImagingShape(CCD))
-			self.CCD_noise = self.getCCDfromAmps(CCD, ffp_noise[CCD])
-
+			self.CCD_noise[CCD] = np.random.normal(self.getCCDSize(CCD))
 
 	def setCCDCorrNoise(self, cov):
 		'''Takes as input a 16x16 covariance matrix for a single CCD and sets noise for the 
@@ -85,7 +76,7 @@ class Noise:
 			noise = np.random.multivariate_normal(np.zeros(16), cov,size=self.getImagingShape(CCD))
 			for ampno in range(1,17):
 				ffp_noise[CCD][ampno] = noise[:,:,ampno-1]
-			self.CCD_noise = self.getCCDfromAmps(CCD, ffp_noise[CCD])
+			self.CCD_noise[CCD] = self.getCCDfromAmps(CCD, ffp_noise[CCD])
 
 	def setMultiCCDCorrNoise(self, covStack, shuffle=True):
 		'''Takes as input a 9x16x16 array of covariance matrices for the nine CCDs on a raft
@@ -103,7 +94,7 @@ class Noise:
 				noise = np.random.multivariate_normal(np.zeros(16),covStack[islot,:,:], size=size)
 				for ampno in range(1,17):
 					ffp_noise[ccdid][ampno] = noise[:,:,ampno-1]
-				self.CCD_noise = self.getCCDfromAmps(ccdid, ffp_noise[ccdid])
+				self.CCD_noise[ccdid] = self.getCCDfromAmps(ccdid, ffp_noise[ccdid])
 
 	def setRaftCorrNoise(self, cov):
 		'''Takes as input a 144x144 covariance matrix for an entire raft, where the index is equal 
@@ -119,20 +110,25 @@ class Noise:
 				for ampno in range(1,17):
 					noiseIndex = islot * 16 + ampno - 1
 					ffp_noise[ccdid][ampno] = noise[:,:,noiseIndex]
-				self.CCD_noise = self.getCCDfromAmps(ccdid, ffp_noise[ccdid])
+				self.CCD_noise[ccdid] = self.getCCDfromAmps(ccdid, ffp_noise[ccdid])
 
 	def getFootprint(self, ccdid, cx, cy, edgelen):
 		'''Given a value for the center of an object, returns a square array with
 		edgelength edgelen containing the noise centered at pixel (cx, cy) on the ccdid '''
 		halfEdge = edgelen / 2
 		size = self.getCCDSize(ccdid)
-		bottomBound = int(cx - halfEdge + 0.5)
-		topBound = int(cx + halfEdge + 0.5)
-		leftBound = int(cy - halfEdge + 0.5)
-		rightBound = int(cy + halfEdge + 0.5)
+		bottomBound = cx - halfEdge + 0.5
+		topBound = cx + halfEdge + 0.5
+		leftBound = cy - halfEdge + 0.5
+		rightBound = cy + halfEdge + 0.5
 
 		if bottomBound < 0 or topBound > size[0] or leftBound < 0 or rightBound > size[1]:
 			raise BoundaryError
+
+		bottomBound = int(bottomBound)
+		topBound = int(topBound)
+		leftBound = int(leftBound)
+		rightBound = int(rightBound)
 
 		return self.CCD_noise[ccdid][bottomBound:topBound,leftBound:rightBound]
     

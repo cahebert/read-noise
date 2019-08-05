@@ -8,18 +8,18 @@ from scipy.stats import multivariate_normal
 
 fname = 'fpCopy%s.fits' % sys.argv[1]
 
+# Get info from fits
+fits = fitsio.read(file, columns=['RA', 'DEC', 'LMAG'], ext = 1)
+hlr = fits['SIZE'][:,1]
+E1 = fits['EPSILON'][:,0]
+E2 = fits['EPSILON'][:,1]
+
+# Establish camera and wcs
+camera = camMapper._makeCamera()
 pointingRA = fitsio.read(fname, columns='TRA', rows=0, ext=1)[0]
 pointingDec = fitsio.read(fname, columns='TDEC', rows=0, ext=1)[0]
 boresight = geom.SpherePoint(pointingRA, pointingDec, geom.degrees)
 wcsList = {detector : getWcsFromDetector(detector, boresight) for detector in camera}
-
-file = os.path.join('/nfs/slac/des/fs1/g/sims/jderose/BCC/Chinchilla/Herd/Chinchilla-4/v1.9.2/addgalspostprocess/truth/truth/','Chinchilla-4_lensed.4.fits')
-fits = fitsio.read(file, columns=['LMAG', 'SIZE', 'EPSILON'], ext = 1)
-
-
-RBAND = fits['LMAG'][:,1]
-E1 = fits['EPSILON'][:,0]
-E2 = fits['EPSILON'][:,1]
 
 def skyToCamPixel(ra, dec):
     loc = geom.SpherePoint(ra, dec, geom.degrees)
@@ -29,7 +29,7 @@ def skyToCamPixel(ra, dec):
             return det.getName(), pix.getX(), pix.getY()
     return 'OOB', 0, 0
 
-camera = camMapper._makeCamera()
+# Make noise
 noise = Noise(camera)
 
 noise_type = sys.argv[2]
@@ -48,7 +48,7 @@ if noise_type == 'RAFT':
 	corr_matrix = np.load(sys.argv[3])
 	noise.setRaftCorrNoise(corr_matrix)
 
-outFile = 'fpMod{}_{}.fits'.format(sys.argv[1], sys.argv[2])
+# Emulation functions
 
 def getShearMat(e1, e2):
 	absesq = e1**2 + e2**2
@@ -67,7 +67,7 @@ def getPsfMat(sigma):
 
 def getWeightsAndSize(e1, e2, hlr, psfSig=0.7):
 	galSig = hlr / 1.1774100225154747
-	cov = (getShearMat(e1, e2) + getPsfMat(psfSig)) * galSig**2 / 0.2**2
+	cov = (getShearMat(e1, e2) * galSig**2 + getPsfMat(psfSig)) / 0.2**2
 	
 	gridSize= 8 * np.sqrt(galSig**2 + psfSig**2)
 	x, y = np.mgrid[-1*(gridSize - 1)/2:(gridSize + 1)/2:1, -1*(gridSize - 1)/2:(gridSize + 1)/2:1]
@@ -83,13 +83,17 @@ def getNoise(ra, dec, edgelen):
 def getDeltaFlux(weightMat, noiseMat):
 	return np.sum(np.multiply(weightMat, noiseMat)) / np.sum(np.multiply(weightMat, weightMat))
 
+# Write new file
+
+outFile = 'fpMod{}_{}.fits'.format(sys.argv[1], sys.argv[2])
+
 nElems = len(fitsio.read(file, columns=[], ext=1))
 galaxyFlux = np.zeros(nElems)
 newRBAND = np.zeros(nElems)
 for j in range(nElems):
-    galaxyFlux[j] = 10**((fits['HLR'][i]-22.5)/(-2.5))
+    galaxyFlux[j] = 10**((fits['LMAG'][i]-22.5)/(-2.5))
 for i in range(nElems):
-	weights, edgelen = getWeightsAndSize(E1[i], E2[i], fits['HLR'][i])
+	weights, edgelen = getWeightsAndSize(E1[i], E2[i], hlr[i])
 	noise = getNoise(fits['RA'][i], fits['DEC'][i], edgelen)
 	totalFlux = getDeltaFlux(weights, noise) + galaxyFlux[j]
     mag = 22.5 - 2.5*np.log10(totalFlux)

@@ -21,7 +21,7 @@ inFile = '/nfs/slac/g/ki/ki19/lsst/jrovee/outputs/fpCopy%s.fits' % fpID
 
 ### Get info from fits
 outData = fitsio.read(inFile, columns=['RA', 'DEC', 'LMAG'], ext = 1)
-galaxyRFlux = 10**((outData['LMAG'][:,1]-22.5)/(-2.5))
+galaxyRFlux = 10**((outData['LMAG'][:,1]-22.5)/(-2.5)) # DE rband
 hlr = fitsio.read(inFile, columns='SIZE', ext = 1)
 E1 = fitsio.read(inFile, columns='EPSILON', ext = 1)[:,0]
 E2 = fitsio.read(inFile, columns='EPSILON', ext = 1)[:,1]
@@ -44,6 +44,7 @@ def skyToCamPixel(ra, dec):
 ### Make noise
 noise = Noise(camera)
 
+### add comment here later
 noise_type = sys.argv[2]
 if noise_type == 'NONE':
 	noise.setZeroNoise()
@@ -63,7 +64,7 @@ if noise_type == 'RAFT':
 ### Emulation functions
 
 def getShearMat(e1, e2):
-	'''returns the shear matrix for the given e1, e2'''
+	'''returns the shear matrix for the given e1, e2, inspired by GalSim'''
 	absesq = e1**2 + e2**2
 	if absesq > 1.e-4:
 		e2g = 1. / (1. + np.sqrt(1.-absesq))
@@ -100,7 +101,7 @@ def getWeights(e1, e2, hlr, psfSig=0.7):
 def getNoise(ra, dec, edgelen):
 	'''Gets the noise at a particular position in nanomaggies.'''
 	ccdid, cx, cy = skyToCamPixel(ra, dec)
-	return noise.getFootprint(ccdid, cx, cy, edgelen) * 0.0009510798216162556
+	return noise.getFootprint(ccdid, cx, cy, edgelen) * 0.0009510798216162556 # ADUs to nanomaggies conversion
 
 def getDeltaFlux(weightMat, noiseMat):
 	'''Calculates a weighted sum of noise in noiseMat using the weightMat as a weighting scheme'''
@@ -111,22 +112,20 @@ def getDeltaFlux(weightMat, noiseMat):
 outFile = '/nfs/slac/g/ki/ki19/lsst/jrovee/modified/fpMod{}_{}.fits'.format(fpID, noise_type)
 
 nElems = len(fitsio.read(inFile, columns=[], ext=1))
-newRBAND = np.zeros(nElems)
+newRband = np.zeros(nElems)
 mask = np.ones(nElems, dtype=bool)
 
 for i in range(nElems):
-	print(i)
 	try:
 		noiseFootprint = getNoise(outData['RA'][i], outData['DEC'][i], getGridSize(hlr[i]))
 		weights = getWeights(E1[i], E2[i], hlr[i])
 		totalFlux = getDeltaFlux(weights, noiseFootprint) + galaxyRFlux[i]
 		mag = 22.5 - 2.5*np.log10(totalFlux)
-		newRBAND[i] = mag
+		newRband[i] = mag
 	except BoundaryError:
 		mask[i] = False
-		print('oob')
 
-outData['LMAG'] = newRBAND
+outData['LMAG'] = newRband
 outData = outData[mask]
 
 fitsio.write(outFile, outData)

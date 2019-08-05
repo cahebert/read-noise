@@ -1,6 +1,9 @@
 import numpy as np
 from lsst.obs.lsst.cameraTransforms import LsstCameraTransforms
 
+class BoundaryError(Error):
+	pass
+
 class Noise:
 	'''
 	A class that contains methods for generating noise for the entire FP.
@@ -118,6 +121,22 @@ class Noise:
 					ffp_noise[ccdid][ampno] = noise[:,:,noiseIndex]
 				self.CCD_noise = self.getCCDfromAmps(ccdid, ffp_noise[ccdid])
 
+	def getFootprint(self, ccdid, cx, cy, edgelen):
+		'''Given a value for the center of an object, returns a square array with
+		edgelength edgelen containing the noise centered at pixel (cx, cy) on the ccdid '''
+		halfEdge = edgelen / 2
+		size = self.getCCDSize(ccdid)
+		bottomBound = int(cx - halfEdge + 0.5)
+		topBound = int(cx + halfEdge + 0.5)
+		leftBound = int(cy - halfEdge + 0.5)
+		rightBound = int(cy + halfEdge + 0.5)
+
+		if bottomBound < 0 or topBound > size[0] or leftBound < 0 or rightBound > size[1]:
+			raise BoundaryError
+
+		return self.CCD_noise[ccdid][bottomBound:topBound,leftBound:rightBound]
+    
+	"""
 	@staticmethod
 	def get_adj_ccd(currCCD, xDir=None, yDir=None, checkValid=False):
 		'''Given a ccdid, it will return the ccdid of the CCD in the direction 'direction' which is one 
@@ -143,7 +162,7 @@ class Noise:
 				raise Exception('No CCD in that direction')
 
 		return 'R{}{}_S{}{}'.format(raftX, raftY, ccdX%3, ccdY%3)
-	"""
+	
 	@classmethod
 	def get_footprint_from_vertices(self, ccdid, cx, cy, edgelen):
 		'''Given a value for the center of an object, returns a square array with
@@ -205,17 +224,4 @@ class Noise:
 				footprint = self.CCD_noise[ccdid][leftBound:rightBound, bottomBound:topBound]
 	"""
 
-	def getFootprint(self, ccdid, cx, cy, edgelen):
-		'''Given a value for the center of an object, returns a square array with
-		edgelength edgelen containing the noise centered at pixel (cx, cy) on the ccdid '''
-		halfEdge = edgelen / 2
-		size = self.getCCDSize(ccdid)
-		bottomBound = int(cx - halfEdge + 0.5)
-		topBound = int(cx + halfEdge + 0.5)
-		leftBound = int(cy - halfEdge + 0.5)
-		rightBound = int(cy + halfEdge + 0.5)
-
-		if bottomBound < 0 or topBound > size[0] or leftBound < 0 or rightBound > size[1]:
-			return None
-
-		return self.CCD_noise[ccdid][bottomBound:topBound,leftBound:rightBound]	
+	

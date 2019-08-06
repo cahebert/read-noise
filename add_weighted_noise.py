@@ -124,6 +124,7 @@ def getDeltaFlux(weightMat, noiseMat):
 ### Write new file
 
 outFile = '/nfs/slac/g/ki/ki19/lsst/jrovee/modified/fpMod{}_{}.fits'.format(fpID, noise_type)
+maskFile = '/nfs/slac/g/ki/ki19/lsst/jrovee/modified/mask{}.npy'.format(fpID)
 
 nElems = len(fitsio.read(inFile, columns=[], ext=1))
 newRband = np.zeros(nElems)
@@ -138,6 +139,8 @@ for i in range(nElems):
 		newRband[i] = mag
 	except BoundaryError:
 		mask[i] = False
+
+np.save(maskFile, mask)
 
 outData['LMAG'][:,1] = newRband
 outData = outData[mask]

@@ -43,20 +43,33 @@ def skyToCamPixel(ra, dec):
 
 ### Make noise
 noise = Noise(camera)
-
-### add comment here later
 noise_type = sys.argv[2]
-if noise_type == 'NONE':
+
+# Adds no noise. Do not supply a third argument 
+if noise_type == 'NONE':   
 	noise.setZeroNoise()
+
+# Adds uncorrelated noise distributed as a gaussian for each pixel.
+# Third argument is the sigma for the noise (in ADU)
 if noise_type == 'IND':
 	sigma = int(sys.argv[3])
 	noise.setIndNoise(sigma)
+
+# Adds noise correlated between the amplifiers within a single chip.
+# Third argument is the filename for the 16x16 covariance matrix being used
 if noise_type == 'CCD':
 	corr_matrix = np.load(sys.argv[3])
 	noise.setCCDCorrNoise(corr_matrix)
+
+# Adds noise correlated between the amplifiers within a single chip, but lets
+# you supply 9 covariance matrices which will be chosen randomly for each raft.
+# Third argument is the filename for the 9x16x16 stack of covariance matrices being used
 if noise_type == 'MULTICCD':
 	corr_matrices = np.load(sys.argv[3])
 	noise.setMultiCCDCorrNoise(corr_matrices)
+
+# Adds noise correlated between all amplifiers on the same raft. Third argument is 
+# the filename for the 144x144 covariance matrix being used.
 if noise_type == 'RAFT':
 	corr_matrix = np.load(sys.argv[3])
 	noise.setRaftCorrNoise(corr_matrix)
@@ -79,9 +92,10 @@ def getPsfMat(sigma):
 	return np.array([ [ sigma**2 , 0 ], [ 0 , sigma**2 ] ])
 
 def getGridSize(hlr, psfSig=0.7):
-	'''Returns the side length of the postage stamp we are using to model the galaxy'''
+	'''Returns the side length of the postage stamp we are using to model the galaxy. Approximately 
+	3 sigma in each direction, where 'sigma' is a combined measure of the galaxy and psf sigmas'''
 	galSig = hlr / 1.1774100225154747
-	return int(8 * np.sqrt(galSig**2 + psfSig**2) / 0.2)
+	return int(6 * np.sqrt(galSig**2 + psfSig**2) / 0.2)
 	
 def getWeights(e1, e2, hlr, psfSig=0.7):
 	'''

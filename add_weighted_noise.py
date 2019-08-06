@@ -139,7 +139,7 @@ for i in range(nElems):
 	except BoundaryError:
 		mask[i] = False
 
-outData['LMAG'] = newRband
+outData['LMAG'][:,1] = newRband
 outData = outData[mask]
 
 fitsio.write(outFile, outData)

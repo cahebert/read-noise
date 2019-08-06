@@ -5,10 +5,11 @@ import healpy as hp
 import lsst.afw.geom as geom
 from lsst.obs.lsst import LsstCamMapper as camMapper
 from lsst.obs.lsst.lsstCamMapper import getWcsFromDetector
-from astropy.io import fits
-        
-### Utility functions
+import fitsio
+from fitsio import FITS
+import sys
 
+### Utility functions
 def inBoundsFast(ra, dec):
         loc = geom.SpherePoint(ra, dec, geom.degrees)
         distance = loc.separation(boresight)
@@ -19,7 +20,6 @@ def inBoundsFast(ra, dec):
             if det.getBBox().contains(pix):
                 return True
         return False
-inBoundsFast = np.vectorize(inBoundsFast)
 
 def getPixelsFromCenter(ra, dec, camera=None):
     '''
@@ -27,7 +27,7 @@ def getPixelsFromCenter(ra, dec, camera=None):
     '''
     if camera is None:
         camera = camMapper._makeCamera()
-    
+
     boresight = geom.SpherePoint(ra, dec, geom.degrees)
     corners = [
         getWcsFromDetector(camera['R41_S20'], boresight).pixelToSky(0,4071),
@@ -44,7 +44,8 @@ def getPixelsFromCenter(ra, dec, camera=None):
     vecList = hp.ang2vec(cornerRAList,cornerDecList,lonlat=True)
     return hp.query_polygon(8,vecList,inclusive=True,nest=True, fact = 128)
 
-### Get pointing angles
+## Get  pointing angles
+
 pointingList = []
 currLat = 2
 
@@ -99,26 +100,35 @@ fNamePattern = "Chinchilla-4_lensed.{}.fits"
 ### Write focal plane copies to fits files
 
 camera = camMapper._makeCamera()
+iPoint = int(sys.argv[1])
+chunkSize = int(sys.argv[2])
+boresight = pointingList[iPoint]
+pixels = getPixelsFromCenter(boresight.getRa().asDegrees(), boresight.getDec().asDegrees(), camera)
+wcsList = {detector : getWcsFromDetector(detector, boresight) for detector in camera}
+testFiles = [os.path.join(root,fNamePattern.format(pixel)) for pixel in pixels]
 
-for iPoint, boresight in pointingList:
-    pixels = getPixelsFromCenter(boresight.getRa().asDegrees(), boresight.getDec().asDegrees(), camera)
-    wcsList = {detector : getWcsFromDetector(detector, boresight) for detector in camera}
-    testFiles = [os.path.join(root,fNamePattern.format(pixel)) for pixel in pixels]
-    hdulists = [fits.open(file) for file in testFiles]
-    data = [hdulist[1].data for hdulist in hdulists]
+writeErrorData = []
 
-    dummy = fits.open(os.path.join(root,fNamePattern.format(0)))
-
-    endOfLast = 0
-    for i, hdu in enumerate(data):
-        ra = hdu['RA']
-        dec = hdu['DEC']
-        valid = hdu[inBoundsFast(ra, dec)]
-        dummy[1].data[endOfLast:endOfLast+len(valid)] = valid
-        endOfLast = len(valid)
-    dummy[1].data = dummy[1].data[:endOfLast]
-
-    dummy[1].data['TRA'] = np.array([boresight.getRa().asDegrees()])
-    dummy[1].data['TDEC'] = np.array([boresight.getDec().asDegrees()])
-
-    dummy.writeto('outputs/fpCopy{}.fits'.format(iPoint))
+outFile = '/nfs/slac/g/ki/ki19/lsst/jrovee/outputs/fpCopy{}.fits'.format(iPoint)
+with FITS(outFile, 'rw', clobber=True) as fits:
+    writtenIn = False
+    for file in testFiles:
+        length = len(fitsio.read(file, columns=[], ext=1))
+        nChunks = length // chunkSize + 1
+        for i in range(nChunks): #length // chunkSize + 1
+            if i < nChunks - 1:
+                span = range(chunkSize*i, chunkSize*(i+1))
+            else:
+                span = range(chunkSize*i, length)
+            ra = fitsio.read(file, columns='RA', rows=span, ext=1)
+            dec = fitsio.read(file, columns='DEC', rows=span, ext=1)
+            usefulRows = [k for j, k in enumerate(span) if inBoundsFast(ra[j],dec[j])]
+            if usefulRows:
+                data = fitsio.read(file, rows=usefulRows, columns=['RA', 'DEC', 'SIZE', 'EPSILON', 'LMAG', 'TRA', 'TDEC'], ext=1)
+                data['TRA'] = boresight.getRa().asDegrees()
+                data['TDEC'] = boresight.getDec().asDegrees()
+                if writtenIn:
+                    fits[1].append(data)
+                else:
+                    fits.write(data)
+                    writtenIn = True

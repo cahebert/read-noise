@@ -114,11 +114,11 @@ with FITS(outFile, 'rw', clobber=True) as fits:
     writtenIn = False
     for file in testFiles:
         length = len(fitsio.read(file, columns=[], ext=1))
-        nChunks = length // chunkSize + 1
+        nChunks = -(-length // chunkSize)  # Cieling integer division
         for i in range(nChunks): #length // chunkSize + 1
-            if i < nChunks - 1:
+            if i != nChunks - 1:
                 span = range(chunkSize*i, chunkSize*(i+1))
-            else:
+            else: # We treat the last chunk slightly different because it is a different size
                 span = range(chunkSize*i, length)
             ra = fitsio.read(file, columns='RA', rows=span, ext=1)
             dec = fitsio.read(file, columns='DEC', rows=span, ext=1)

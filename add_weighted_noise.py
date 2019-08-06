@@ -83,8 +83,8 @@ def getShearMat(e1, e2):
 		e2g = 1. / (1. + np.sqrt(1.-absesq))
 	else:
 		e2g = 0.5 + absesq*(0.125 + absesq*(0.0625 + absesq*0.0390625))
-	g1 = e1 / e2g
-	g2 = e2 / e2g
+	g1 = e1 * e2g
+	g2 = e2 * e2g
 	return np.array([ [ 1 + g1 , g2 ], [ g2 , 1 - g1 ] ])
 
 def getPsfMat(sigma):

@@ -19,13 +19,6 @@ from scipy.stats import multivariate_normal
 fpID = sys.argv[1]
 inFile = '/nfs/slac/g/ki/ki19/lsst/jrovee/outputs/fpCopy%s.fits' % fpID
 
-### Get info from fits
-outData = fitsio.read(inFile, columns=['RA', 'DEC', 'LMAG'], ext = 1)
-galaxyRFlux = 10**((outData['LMAG'][:,1]-22.5)/(-2.5)) # DE rband
-hlr = fitsio.read(inFile, columns='SIZE', ext = 1)
-E1 = fitsio.read(inFile, columns='EPSILON', ext = 1)[:,0]
-E2 = fitsio.read(inFile, columns='EPSILON', ext = 1)[:,1]
-
 ### Establish camera and wcs
 camera = camMapper._makeCamera()
 pointingRA = fitsio.read(inFile, columns='TRA', rows=0, ext=1)[0]
@@ -121,28 +114,47 @@ def getDeltaFlux(weightMat, noiseMat):
 	'''Calculates a weighted sum of noise in noiseMat using the weightMat as a weighting scheme'''
 	return np.sum(np.multiply(weightMat, noiseMat)) / np.sum(np.multiply(weightMat, weightMat))
 
-### Write new file
+# Process fits
+chunkSize = sys.argv[-1] 
+length = len(fitsio.read(inFile, columns=[], ext=1))
+nChunks = -(-length // chunkSize)  # Cieling integer division
 
 outFile = '/nfs/slac/g/ki/ki19/lsst/jrovee/modified/fpMod{}_{}.fits'.format(fpID, noise_type)
-maskFile = '/nfs/slac/g/ki/ki19/lsst/jrovee/modified/mask{}.npy'.format(fpID)
+maskFile = '/nfs/slac/g/ki/ki19/lsst/jrovee/modified/mask{}_{}.npy'.format(fpID, noise_type)
 
 nElems = len(fitsio.read(inFile, columns=[], ext=1))
 newRband = np.zeros(nElems)
 mask = np.ones(nElems, dtype=bool)
 
-for i in range(nElems):
-	try:
-		noiseFootprint = getNoise(outData['RA'][i], outData['DEC'][i], getGridSize(hlr[i]))
-		weights = getWeights(E1[i], E2[i], hlr[i])
-		totalFlux = getDeltaFlux(weights, noiseFootprint) + galaxyRFlux[i]
-		mag = 22.5 - 2.5*np.log10(totalFlux)
-		newRband[i] = mag
-	except BoundaryError:
-		mask[i] = False
+with FITS(outFile, 'rw', clobber=True) as fits:
+	writtenIn = False
+	for i in range(nChunks): 
+		if i != nChunks - 1:
+			span = range(chunkSize*i, chunkSize*(i+1))
+		else: 
+			span = range(chunkSize*i, length)
+		outData = fitsio.read(inFile, columns=['RA', 'DEC', 'LMAG'], rows=span, ext=1)
+		rFlux = 10**((outData['LMAG'][:,1]-22.5)/(-2.5)) # DE rband
+		hlr = fitsio.read(inFile, columns='SIZE', rows=span, ext = 1)
+		E1 = fitsio.read(inFile, columns='EPSILON', rows=span, ext = 1)[:,0]
+		E2 = fitsio.read(inFile, columns='EPSILON', rows=span, ext = 1)[:,1]
+
+		newRFlux = np.zeros(chunkSize)
+		for j, k in enumerate(span):
+			try:
+				noiseFootprint = getNoise(outData['RA'][j], outData['DEC'][j], getGridSize(hlr[j]))
+				weights = getWeights(E1[j], E2[j], hlr[j])
+				totalFlux = getDeltaFlux(weights, noiseFootprint) + rFlux[j]
+				if totalFlux > 0:
+					mag = 22.5 - 2.5*np.log10(totalFlux)
+					outData['LMAG'][j,1] = mag
+				else:
+					mask[k] = False
+			except BoundaryError:
+				mask[k] = False
+		if not writtenIn:
+			fits.write(outData)
+		else:
+			fits.append(outData)
 
 np.save(maskFile, mask)
-
-outData['LMAG'][:,1] = newRband
-outData = outData[mask]
-
-fitsio.write(outFile, outData)

@@ -115,7 +115,7 @@ with FITS(outFile, 'rw', clobber=True) as fits:
     for file in testFiles:
         length = len(fitsio.read(file, columns=[], ext=1))
         nChunks = -(-length // chunkSize)  # Cieling integer division
-        for i in range(nChunks): #length // chunkSize + 1
+        for i in range(nChunks): 
             if i != nChunks - 1:
                 span = range(chunkSize*i, chunkSize*(i+1))
             else: # We treat the last chunk slightly different because it is a different size

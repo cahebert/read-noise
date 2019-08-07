@@ -64,7 +64,7 @@ class Noise:
 	def setIndNoise(self, sigma):
 		'''Sets the ffp_noise to random noise with std sigma and with each pixel independent'''
 		for CCD in self.CCD_list:
-			self.CCD_noise[CCD] = np.random.normal(self.getCCDSize(CCD))
+			self.CCD_noise[CCD] = np.random.normal(0, sigma, size=self.getCCDSize(CCD))
 
 	def setCCDCorrNoise(self, cov):
 		'''Takes as input a 16x16 covariance matrix for a single CCD and sets noise for the 

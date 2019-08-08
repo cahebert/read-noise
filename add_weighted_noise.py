@@ -10,6 +10,7 @@ Takes 3 additional arguments:
 from noise_gen import Noise, BoundaryError
 import numpy as np
 import fitsio
+from fitsio import FITS
 import sys
 import lsst.afw.geom as geom
 from lsst.obs.lsst import LsstCamMapper as camMapper
@@ -115,16 +116,14 @@ def getDeltaFlux(weightMat, noiseMat):
 	return np.sum(np.multiply(weightMat, noiseMat)) / np.sum(np.multiply(weightMat, weightMat))
 
 # Process fits
-chunkSize = sys.argv[-1] 
+chunkSize = int(sys.argv[-1])
 length = len(fitsio.read(inFile, columns=[], ext=1))
 nChunks = -(-length // chunkSize)  # Cieling integer division
 
 outFile = '/nfs/slac/g/ki/ki19/lsst/jrovee/modified/fpMod{}_{}.fits'.format(fpID, noise_type)
 maskFile = '/nfs/slac/g/ki/ki19/lsst/jrovee/modified/mask{}_{}.npy'.format(fpID, noise_type)
 
-nElems = len(fitsio.read(inFile, columns=[], ext=1))
-newRband = np.zeros(nElems)
-mask = np.ones(nElems, dtype=bool)
+mask = np.ones(length, dtype=bool)
 
 with FITS(outFile, 'rw', clobber=True) as fits:
 	writtenIn = False

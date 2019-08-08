@@ -13,4 +13,4 @@ nMgy_to_Jy             = 3.631e-6
 nMgy_to_ADU = nMgy_to_Jy * Jy_to_SI * area * collectionTime * np.dot(throughput,dfreq/freq) / h
 ADU_to_nMgy = 1 / nMgy_to_ADU
 
-print(1/ADU_to_nMgy)
+print(ADU_to_nMgy)

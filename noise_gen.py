@@ -1,4 +1,7 @@
 import numpy as np
+import os
+import psutil
+p = psutil.Process(os.getpid())
 from lsst.obs.lsst.cameraTransforms import LsstCameraTransforms
 
 class BoundaryError(Exception):
@@ -64,6 +67,7 @@ class Noise:
 	def setIndNoise(self, sigma):
 		'''Sets the ffp_noise to random noise with std sigma and with each pixel independent'''
 		for CCD in self.CCD_list:
+			print(p.memory_info().rss/1024.**3)
 			self.CCD_noise[CCD] = np.random.normal(0, sigma, size=self.getCCDSize(CCD))
 
 	def setCCDCorrNoise(self, cov):

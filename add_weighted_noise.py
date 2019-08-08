@@ -6,7 +6,8 @@ Takes 3 additional arguments:
 3: additional specifications for certain types of noise.
 
 '''
-
+import time
+start = time.time()
 from noise_gen import Noise, BoundaryError
 import numpy as np
 import fitsio
@@ -16,7 +17,7 @@ import lsst.afw.geom as geom
 from lsst.obs.lsst import LsstCamMapper as camMapper
 from lsst.obs.lsst.lsstCamMapper import getWcsFromDetector
 from scipy.stats import multivariate_normal
-
+print(time.time() - start)
 fpID = sys.argv[1]
 inFile = '/nfs/slac/g/ki/ki19/lsst/jrovee/outputs/fpCopy%s.fits' % fpID
 
@@ -118,7 +119,7 @@ def getDeltaFlux(weightMat, noiseMat):
 # Process fits
 chunkSize = int(sys.argv[-1])
 length = len(fitsio.read(inFile, columns=[], ext=1))
-nChunks = -(-length // chunkSize)  # Cieling integer division
+nChunks = -(-length // chunkSize)  # Ceiling integer division
 
 outFile = '/nfs/slac/g/ki/ki19/lsst/jrovee/modified/fpMod{}_{}.fits'.format(fpID, noise_type)
 maskFile = '/nfs/slac/g/ki/ki19/lsst/jrovee/modified/mask{}_{}.npy'.format(fpID, noise_type)
@@ -128,6 +129,7 @@ mask = np.ones(length, dtype=bool)
 with FITS(outFile, 'rw', clobber=True) as fits:
 	writtenIn = False
 	for i in range(nChunks): 
+		print(i)
 		if i != nChunks - 1:
 			span = range(chunkSize*i, chunkSize*(i+1))
 		else: 
@@ -153,7 +155,8 @@ with FITS(outFile, 'rw', clobber=True) as fits:
 				mask[k] = False
 		if not writtenIn:
 			fits.write(outData)
+			writtenIn = True
 		else:
-			fits.append(outData)
+			fits[1].append(outData)
 
 np.save(maskFile, mask)

@@ -1,13 +1,40 @@
+'''
+This script divides Joe Derose's Chinchilla catalogs into geometries that match the LSST focal plane geometry. 
+This script is designed to be called from the command line as: 
+
+python hp2fp_tiler.py [fpID] [chunkSize]
+
+- fpID refers to the index of the focal plane we are writing in the list stored in utils/pointingList.obj
+- chunkSize is not required, and is used to reduce memory usage. The lower chunkSize is, the less memory will
+be used, but the process will also be slower
+
+The new file created stores: RA, Dec, Half Light Radius ('SIZE'), Ellipticity ('EPSILON'), and magnitude ('LMAG').
+It also stores the pointing position of this "telescope" in the 'TRA' and 'TDEC' slots.
+
+Julian Rovee
+'''
 import numpy as np
 import os
 import glob
 import healpy as hp
-import lsst.afw.geom as geom
+import lsst.geom as geom
 from lsst.obs.lsst import LsstCamMapper as camMapper
 from lsst.obs.lsst.lsstCamMapper import getWcsFromDetector
 import fitsio
 from fitsio import FITS
 import sys
+import pickle
+
+if len(sys.argv) == 1:
+    raise(Exception('Must supply a fpIndex'))
+elif len(sys.argv) == 2:
+    fpID = int(sys.argv[1])
+    chunkSize = 10000
+elif len(sys.argv) == 3:
+    fpID = int(sys.argv[1])
+    chunkSize = int(sys.argv[2])
+else:
+    raise(Exception('Too many arguments'))
 
 ### Utility functions
 def inBoundsFast(ra, dec):
@@ -44,77 +71,24 @@ def getPixelsFromCenter(ra, dec, camera=None):
     vecList = hp.ang2vec(cornerRAList,cornerDecList,lonlat=True)
     return hp.query_polygon(8,vecList,inclusive=True,nest=True, fact = 128)
 
-## Get  pointing angles
-
-pointingList = []
-currLat = 2
-
-while(currLat < 89):
-    # Go to center
-    currLon = 90
-    midPoint = geom.SpherePoint(currLon, currLat, geom.degrees)
-    pointingList.append(midPoint)
-    
-    # Go right
-    while(currLon < 180 - 2/np.cos(currLat*np.pi/180)):
-        point = geom.SpherePoint(currLon, currLat, geom.degrees)
-        if point.separation(pointingList[-1]).asDegrees() < 4:
-            currLon += 0.2/np.cos(currLat*np.pi/180)
-            continue
-        pointingList.append(point)
-        currLon += 4/np.cos(currLat*np.pi/180)
-    
-    # Go back to center
-    currLon = 90 - 4/np.cos(currLat*np.pi/180)
-    while(midPoint.separation(geom.SpherePoint(currLon, currLat, geom.degrees)).asDegrees() < 4):
-        currLon -= 0.2/np.cos(currLat*np.pi/180)
-    
-    # Go left
-    while(currLon > 2/np.cos(currLat*np.pi/180)):
-        point = geom.SpherePoint(currLon, currLat, geom.degrees)
-        if point.separation(pointingList[-1]).asDegrees() < 4:
-            currLon -= 0.2/np.cos(currLat*np.pi/180)
-            continue
-        pointingList.append(point)
-        currLon -= 4/np.cos(currLat*np.pi/180)
-    
-    # Move up and repeat
-    currLat += 4
-    
-# Check for points that might overlap with the boundary and remove them (there are 2)
-toRemove = []
-for point in pointingList:
-    for lat in np.arange(0,90,0.1):
-        if point.separation(geom.SpherePoint(0,lat,geom.degrees)).asDegrees() < 2.2:
-            toRemove.append(point)
-            break
-        if point.separation(geom.SpherePoint(180,lat,geom.degrees)).asDegrees() < 2.2:
-            toRemove.append(point)
-            break
-for point in toRemove:
-    pointingList.remove(point)
+### Write focal plane copies to fits files
 
 root = "/nfs/slac/des/fs1/g/sims/jderose/BCC/Chinchilla/Herd/Chinchilla-4/v1.9.2/addgalspostprocess/truth/truth"
 fNamePattern = "Chinchilla-4_lensed.{}.fits"
 
-### Write focal plane copies to fits files
-
 camera = camMapper._makeCamera()
-iPoint = int(sys.argv[1])
-chunkSize = int(sys.argv[2])
-boresight = pointingList[iPoint]
+with open('/u/gu/jrovee//WORK/read-noise/utils/pointingList.obj', 'rb') as pointingList:
+    boresight = pickle.load(pointingList)[fpID]
 pixels = getPixelsFromCenter(boresight.getRa().asDegrees(), boresight.getDec().asDegrees(), camera)
 wcsList = {detector : getWcsFromDetector(detector, boresight) for detector in camera}
 testFiles = [os.path.join(root,fNamePattern.format(pixel)) for pixel in pixels]
 
-writeErrorData = []
-
-outFile = '/nfs/slac/g/ki/ki19/lsst/jrovee/outputs/fpCopy{}.fits'.format(iPoint)
+outFile = '/nfs/slac/g/ki/ki19/lsst/jrovee/outputs/fpCopies/fpCopy{}.fits'.format(fpID)
 with FITS(outFile, 'rw', clobber=True) as fits:
     writtenIn = False
     for file in testFiles:
         length = len(fitsio.read(file, columns=[], ext=1))
-        nChunks = -(-length // chunkSize)  # Cieling integer division
+        nChunks = -(-length // chunkSize)  # Ceiling integer division
         for i in range(nChunks): 
             if i != nChunks - 1:
                 span = range(chunkSize*i, chunkSize*(i+1))

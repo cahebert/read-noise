@@ -4,20 +4,22 @@ Takes 3 additional arguments:
 1: the ID of the focal plane copy we are manipulating
 2: the type of noise we are adding. Must be one of {'NONE', 'IND', 'CCD', 'MULTICCD', 'RAFT'}
 3: additional specifications for certain types of noise.
+4: number of rows being read into memory at a time (I usually use 10000)
 
 '''
-import time
-start = time.time()
 from noise_gen import Noise, BoundaryError
 import numpy as np
 import fitsio
 from fitsio import FITS
 import sys
-import lsst.afw.geom as geom
+import lsst.geom as geom
 from lsst.obs.lsst import LsstCamMapper as camMapper
 from lsst.obs.lsst.lsstCamMapper import getWcsFromDetector
 from scipy.stats import multivariate_normal
-print(time.time() - start)
+import psutil
+import os
+p = psutil.Process(os.getpid())
+
 fpID = sys.argv[1]
 inFile = '/nfs/slac/g/ki/ki19/lsst/jrovee/outputs/fpCopy%s.fits' % fpID
 
@@ -40,6 +42,7 @@ def skyToCamPixel(ra, dec):
 noise = Noise(camera)
 noise_type = sys.argv[2]
 
+print(p.memory_info().rss/1024.**3)
 # Adds no noise. Do not supply a third argument 
 if noise_type == 'NONE':   
 	noise.setZeroNoise()
@@ -68,6 +71,8 @@ if noise_type == 'MULTICCD':
 if noise_type == 'RAFT':
 	corr_matrix = np.load(sys.argv[3])
 	noise.setRaftCorrNoise(corr_matrix)
+
+print(p.memory_info().rss/1024.**3)
 
 ### Emulation functions
 
@@ -129,18 +134,25 @@ mask = np.ones(length, dtype=bool)
 with FITS(outFile, 'rw', clobber=True) as fits:
 	writtenIn = False
 	for i in range(nChunks): 
-		print(i)
+		print(i, p.memory_info().rss/1024.**3)
 		if i != nChunks - 1:
 			span = range(chunkSize*i, chunkSize*(i+1))
 		else: 
 			span = range(chunkSize*i, length)
+		print(i, p.memory_info().rss/1024.**3)
 		outData = fitsio.read(inFile, columns=['RA', 'DEC', 'LMAG'], rows=span, ext=1)
+		print(i, p.memory_info().rss/1024.**3)
 		rFlux = 10**((outData['LMAG'][:,1]-22.5)/(-2.5)) # DE rband
+		print(i, p.memory_info().rss/1024.**3)
 		hlr = fitsio.read(inFile, columns='SIZE', rows=span, ext = 1)
+		print(i, p.memory_info().rss/1024.**3)
 		E1 = fitsio.read(inFile, columns='EPSILON', rows=span, ext = 1)[:,0]
+		print(i, p.memory_info().rss/1024.**3)
 		E2 = fitsio.read(inFile, columns='EPSILON', rows=span, ext = 1)[:,1]
+		print(i, p.memory_info().rss/1024.**3)
 
 		newRFlux = np.zeros(chunkSize)
+		print(i, p.memory_info().rss/1024.**3)
 		for j, k in enumerate(span):
 			try:
 				noiseFootprint = getNoise(outData['RA'][j], outData['DEC'][j], getGridSize(hlr[j]))
@@ -153,10 +165,13 @@ with FITS(outFile, 'rw', clobber=True) as fits:
 					mask[k] = False
 			except BoundaryError:
 				mask[k] = False
+		print(i, p.memory_info().rss/1024.**3)
 		if not writtenIn:
 			fits.write(outData)
 			writtenIn = True
+			print(i, p.memory_info().rss/1024.**3)
 		else:
 			fits[1].append(outData)
+			print(i, p.memory_info().rss/1024.**3)
 
 np.save(maskFile, mask)
